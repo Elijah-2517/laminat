@@ -99,7 +99,15 @@ body {
 .input-row { display: flex; gap: 1rem; }
 .input-wrapper { position: relative; flex: 1; display: flex; flex-direction: column; }
 .input-wrapper label { margin-bottom: 0.4rem; font-size: 0.95rem; }
-input[type="number"], select.custom-select { width: 100%; padding: 0.6rem 1rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--input-bg); font-family: inherit; font-size: 0.95rem; }
+input[type="number"], select.custom-select { width: 100%; padding: 0.6rem 2.8rem 0.6rem 1rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--input-bg); font-family: inherit; font-size: 0.95rem; }
+/* Hiding native spin buttons */
+input[type="number"]::-webkit-inner-spin-button, 
+input[type="number"]::-webkit-outer-spin-button { 
+    -webkit-appearance: none; 
+    margin: 0; 
+}
+input[type="number"] { -moz-appearance: textfield; }
+
 .unit { position: absolute; right: 1rem; bottom: 0.6rem; color: var(--text-muted); font-size: 0.85rem; pointer-events: none; }
 .hint { display: block; margin-top: 0.3rem; font-size: 0.82rem; color: var(--text-muted); line-height: 1.4;}
 
@@ -128,3 +136,21 @@ input[type="number"], select.custom-select { width: 100%; padding: 0.6rem 1rem; 
 .piece-badge.from-pool { background: #cd9f7b; color: #fff;}
 .piece-badge.whole { background: #fdfaf6; }
 .waste-badge { color: var(--danger); font-weight: 600; }
+
+.btn-small {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    height: fit-content;
+}
+.btn-small:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: rgba(59, 130, 246, 0.05);
+}

@@ -90,7 +90,32 @@
                             <input type="number" id="minLeftover" value="300" min="0" step="1">
                             <span class="unit">мм</span>
                         </div>
-                        <small class="hint">Короткие куски отбрасываются в мусор. Слишком короткие концы рядов автоматически предотвращаются алгоритмом.</small>
+                        <small class="hint">Слишком короткие концы рядов автоматически предотвращаются алгоритмом.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="input-wrapper">
+                            <label>Технологический зазор (отступ от стен)</label>
+                            <input type="number" id="wallOffset" value="10" min="0" step="1">
+                            <span class="unit">мм</span>
+                        </div>
+                        <small class="hint">Обязательное расстояние для теплового расширения у всех стен.</small>
+                    </div>
+
+                    <div class="form-group row-width-group">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
+                            <label id="lblManualRow">Ширина первого ряда</label>
+                            <button id="swapRowBtn" class="btn-small" title="Задавать продольный рез с другой стороны">↕ Поменять</button>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:stretch;">
+                            <div style="flex:1; position:relative;">
+                                <input type="number" id="manualRowWidth" placeholder="Авто" min="20" step="1" style="height:100%;">
+                                <span class="unit" style="right:12px; top:50%; transform:translateY(-50%); bottom:auto;">мм</span>
+                            </div>
+                            <button id="fullRowBtn" class="btn-small" style="height:auto; display:flex; align-items:center;" title="Установить ширину целой доски">Целая</button>
+                        </div>
+                        <small class="hint" id="calcRowWidthDisplay" style="margin-top:6px; display:block; color:#64748b;">Ширина последнего ряда: <b>Авто</b></small>
+                        <div id="rowWidthWarning" class="error-msg" style="display:none; font-size:0.8rem; margin-top:8px; padding:6px; text-align:center;">⚠️ Внимание! Ширина одного из рядов меньше 100мм. Рекомендуется увеличить.</div>
                     </div>
 
                     <div class="form-group">

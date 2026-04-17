@@ -21,8 +21,34 @@ document.addEventListener('DOMContentLoaded', () => {
     const minOverlapInput = document.getElementById('minOverlap');
     const lamInPackInput = document.getElementById('lamInPack');
     const startCornerSelect = document.getElementById('startCorner');
+    const wallOffsetInput = document.getElementById('wallOffset');
+    const manualRowWidthInput = document.getElementById('manualRowWidth');
+    const fullRowBtn = document.getElementById('fullRowBtn');
+    const calcRowWidthDisplay = document.getElementById('calcRowWidthDisplay');
+    const rowWidthWarning = document.getElementById('rowWidthWarning');
+    const swapRowBtn = document.getElementById('swapRowBtn');
+    const lblManualRow = document.getElementById('lblManualRow');
     const showLocksCheck = document.getElementById('showLocks');
-    const INPUTS = [lamLengthInput, lamWidthInput, minLeftoverInput, minOverlapInput, lamInPackInput, startCornerSelect];
+    
+    let manualRowMode = 'first';
+    
+    const INPUTS = [lamLengthInput, lamWidthInput, minLeftoverInput, minOverlapInput, lamInPackInput, startCornerSelect, wallOffsetInput, manualRowWidthInput];
+
+    if (fullRowBtn) {
+        fullRowBtn.addEventListener('click', () => {
+            manualRowWidthInput.value = lamWidthInput.value;
+            queueDraw(0);
+        });
+    }
+    
+    if (swapRowBtn) {
+        swapRowBtn.addEventListener('click', () => {
+            manualRowMode = manualRowMode === 'first' ? 'last' : 'first';
+            lblManualRow.textContent = manualRowMode === 'first' ? 'Ширина первого ряда' : 'Ширина последнего ряда';
+            saveState();
+            queueDraw(0);
+        });
+    }
 
     if (showLocksCheck) {
         showLocksCheck.addEventListener('change', () => {
@@ -53,7 +79,10 @@ document.addEventListener('DOMContentLoaded', () => {
             minLeftover: minLeftoverInput.value,
             minOverlap: minOverlapInput.value,
             pack: lamInPackInput.value,
-            corner: startCornerSelect.value
+            corner: startCornerSelect.value,
+            wallOffset: wallOffsetInput.value,
+            manualRowW: manualRowWidthInput.value,
+            manualRowMode: manualRowMode
         };
         localStorage.setItem('laminatorDataV3', JSON.stringify(data));
     }
@@ -72,6 +101,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 minOverlapInput.value = finalData.minOverlap || 400;
                 lamInPackInput.value = finalData.pack || 8;
                 if (finalData.corner) startCornerSelect.value = finalData.corner;
+                if (finalData.wallOffset !== undefined) wallOffsetInput.value = finalData.wallOffset;
+                if (finalData.manualRowW !== undefined || finalData.firstRowW !== undefined) {
+                    manualRowWidthInput.value = finalData.manualRowW || finalData.firstRowW || '';
+                }
+                if (finalData.manualRowMode) {
+                    manualRowMode = finalData.manualRowMode;
+                    lblManualRow.textContent = manualRowMode === 'first' ? 'Ширина первого ряда' : 'Ширина последнего ряда';
+                }
                 return true;
             }
         } catch (e) { console.error(e); }
@@ -92,8 +129,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // Canvas Events (Pan & Zoom)
     canvas.addEventListener('wheel', (e) => {
         e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        
         const rawZoom = e.deltaY < 0 ? 1.1 : 0.9;
         scaleZoom *= rawZoom;
+        
+        let cx = canvas.width / 2;
+        let cy = canvas.height / 2;
+        panX = mouseX - cx - (mouseX - cx - panX) * rawZoom;
+        panY = mouseY - cy - (mouseY - cy - panY) * rawZoom;
+
         drawCanvas();
     });
 
@@ -343,6 +390,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const minLeftover = parseInt(minLeftoverInput.value) || 300;
         const minOverlap = parseInt(minOverlapInput.value) || 400;
         const corner = startCornerSelect.value;
+        const wallOffset = parseInt(wallOffsetInput.value) || 0;
+        let manualW = parseInt(manualRowWidthInput.value) || 0;
+        
         const dirY = (corner === 'TL' || corner === 'TR') ? 1 : -1;
         const dirX = (corner === 'TL' || corner === 'BL') ? 1 : -1;
 
@@ -351,26 +401,77 @@ document.addEventListener('DOMContentLoaded', () => {
         let pool = []; 
 
         let prevRowSeams = [];
-        let yStart = dirY === 1 ? minY : (maxY - lamW);
         
-        let roomH = maxY - minY;
-        let remainder = roomH % lamW;
-        if (remainder > 0 && remainder < 100) {
-            let splitShift = Math.floor((lamW + remainder) / 2);
-            let offset = lamW - splitShift; 
-            if (dirY === 1) yStart -= offset;
-            else yStart += offset;
+        let effMinY = minY + wallOffset;
+        let effMaxY = maxY - wallOffset;
+        let roomH = effMaxY - effMinY;
+        if (roomH <= 0) roomH = 1;
+
+        let firstRowHLabel = 0;
+        let lastRowHLabel = 0;
+
+        let defaultRemainder = roomH % lamW;
+        let autoFirstRowH = lamW;
+        if (defaultRemainder > 0 && defaultRemainder < 100) autoFirstRowH = Math.floor((lamW + defaultRemainder) / 2);
+
+        let firstRowH = lamW;
+
+        if (manualW > 0 && manualW <= lamW) {
+            if (manualRowMode === 'first') {
+                firstRowH = manualW;
+            } else {
+                let roomMinusLast = roomH - manualW;
+                firstRowH = roomMinusLast % lamW;
+                if (firstRowH < 0.1) firstRowH = lamW;
+            }
+        } else {
+            firstRowH = autoFirstRowH;
         }
 
-        let steps = Math.ceil((maxY - minY) / lamW) + 2; 
-        for (let step = 0; step < steps; step++) {
-            let y = yStart + (dirY * step * lamW);
-            
-            let validStartY = Math.max(minY, y);
-            let validEndY = Math.min(maxY, y + lamW);
-            if (validEndY <= validStartY) continue;
+        let yRows = [];
+        let curY = dirY === 1 ? effMinY : effMaxY;
+        let remainingH = roomH;
+        let currentH = firstRowH;
 
-            let rayY = validStartY + (validEndY - validStartY) / 2;
+        while (remainingH > 0.1) {
+            let h = Math.min(currentH, remainingH);
+            let rowY = dirY === 1 ? curY : curY - h;
+            yRows.push({ y: rowY, h: h, cy: rowY + h / 2 });
+            curY = dirY === 1 ? curY + h : curY - h;
+            remainingH -= h;
+            currentH = lamW; 
+        }
+        
+        if (yRows.length > 0) {
+            firstRowHLabel = Math.round(yRows[0].h);
+            lastRowHLabel = Math.round(yRows[yRows.length - 1].h);
+        }
+
+        if (calcRowWidthDisplay) {
+            if (manualRowWidthInput.value === '') {
+                manualRowWidthInput.placeholder = `Авто (${manualRowMode === 'first' ? firstRowHLabel : lastRowHLabel})`;
+            } else {
+                manualRowWidthInput.placeholder = `Авто`;
+            }
+            
+            let calculatedDisplayVal = manualRowMode === 'first' ? lastRowHLabel : firstRowHLabel;
+            let opponentName = manualRowMode === 'first' ? 'последнего' : 'первого';
+            calcRowWidthDisplay.innerHTML = `Ширина ${opponentName} ряда: <b>${manualW > 0 ? '' : 'Авто ('}${calculatedDisplayVal} мм${manualW > 0 ? '' : ')'}</b>`;
+        }
+
+        if (rowWidthWarning) {
+            if ((firstRowHLabel > 0 && firstRowHLabel < 100) || (lastRowHLabel > 0 && lastRowHLabel < 100)) {
+                rowWidthWarning.style.display = 'block';
+            } else {
+                rowWidthWarning.style.display = 'none';
+            }
+        }
+
+        for (let row of yRows) {
+            let y = row.y;
+            let currentLamW = row.h;
+            let rayY = row.cy;
+            
             let inters = [];
             for (let i = 0; i < pts.length - 1; i++) {
                 let p1 = pts[i], p2 = pts[i+1];
@@ -385,7 +486,9 @@ document.addEventListener('DOMContentLoaded', () => {
             let chunks = [];
             for (let i = 0; i < inters.length; i += 2) {
                 if (inters[i] !== undefined && inters[i+1] !== undefined) {
-                    chunks.push([inters[i], inters[i+1]]);
+                    let cx1 = inters[i] + wallOffset;
+                    let cx2 = inters[i+1] - wallOffset;
+                    if (cx2 >= cx1 + 0.1) chunks.push([cx1, cx2]);
                 }
             }
             if (dirX === -1) chunks.reverse();
@@ -499,16 +602,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     let drawX = dirX === 1 ? activeX : (activeX - useLen);
 
                     let midX = drawX + useLen/2;
-                    let topInside = pointInPoly(midX, y + 1, pts);
-                    let botInside = pointInPoly(midX, y + lamW - 1, pts);
-                    let isCutLengthwise = (!topInside || !botInside);
-                    let keptWidth = 0;
-                    if (isCutLengthwise) {
-                        for(let stepY=Math.floor(y); stepY<Math.floor(y+lamW); stepY+=1) { 
-                            if(pointInPoly(midX, stepY+0.4, pts)) keptWidth++; 
-                        }
-                        if (keptWidth === 0) keptWidth = lamW;
-                    }
+                    let keptWidth = currentLamW;
+                    let isCutLengthwise = keptWidth < lamW - 0.1;
 
                     let pId, pIdx, isNewPiece, origLen;
                     if (p.isStart) {
@@ -556,11 +651,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     layoutBoards.push({ 
                         x: drawX, y: y, 
-                        w: useLen, h: lamW, 
+                        w: useLen, h: currentLamW, 
                         type: typeStr,
                         label: displayLabel,
                         cutLeft: cutLeft,
-                        cutRight: cutRight
+                        cutRight: cutRight,
+                        keptWidth: keptWidth,
+                        isCutLengthwise: isCutLengthwise
                     });
                     
                     let bMap = boardsMap.find(b => b.id === pId);
@@ -583,7 +680,7 @@ document.addEventListener('DOMContentLoaded', () => {
             prevRowSeams = currentRowSeams;
         }
 
-        currentLayout = { pts, minX, maxX, minY, maxY, hasError: false, layoutBoards };
+        currentLayout = { pts, minX, maxX, minY, maxY, wallOffset, hasError: false, layoutBoards };
         drawCanvas();
 
         updateResults(pts, nextBoardId - 1, lamL, lamW, lamInPack);
@@ -620,7 +717,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function drawCanvas() {
         if (!currentLayout) return;
-        const { pts, minX, maxX, minY, maxY, hasError, layoutBoards } = currentLayout;
+        const { pts, minX, maxX, minY, maxY, wallOffset, hasError, layoutBoards } = currentLayout;
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
@@ -664,33 +761,57 @@ document.addEventListener('DOMContentLoaded', () => {
                     ctx.strokeStyle = 'rgba(0,0,0,0.5)';
                     ctx.strokeRect(rx, ry, rwBox, rhBox);
 
-                    if (rwBox > 25 && rhBox > 15) {
+                    let showLocks = showLocksCheck && showLocksCheck.checked;
+                    let showText = (rwBox > 25 && rhBox > 15);
+
+                    if (showText) {
                         ctx.fillStyle = (b.type === 'whole') ? '#475569' : ((b.type === 'pool') ? '#fff' : '#1e293b');
-                        ctx.fillText(b.label, rx + rwBox/2, ry + rhBox/2);
+                        if (b.isCutLengthwise && showLocks && rhBox > 25) {
+                            ctx.fillText(b.label, rx + rwBox/2, ry + rhBox/2 - 6);
+                        } else {
+                            ctx.fillText(b.label, rx + rwBox/2, ry + rhBox/2);
+                        }
                     }
                     
-                    // Optional Locks layer
-                    if (showLocksCheck && showLocksCheck.checked) {
-                        // Right side
+                    if (showLocks) {
                         if (b.cutRight) {
-                            ctx.fillStyle = '#ef4444'; // Red Cut
-                            ctx.fillRect(rx + rwBox - 4, ry, 4, rhBox);
-                        } else { // Lock
-                            ctx.fillStyle = '#22c55e'; // Green Lock
-                            ctx.beginPath();
-                            ctx.arc(rx + rwBox - 4, ry + rhBox/2, 4, -Math.PI/2, Math.PI/2);
-                            ctx.fill();
+                            ctx.fillStyle = '#ef4444'; ctx.fillRect(rx + rwBox - 4, ry, 4, rhBox);
+                        } else {
+                            ctx.fillStyle = '#22c55e'; ctx.beginPath(); ctx.arc(rx + rwBox - 4, ry + rhBox/2, 4, -Math.PI/2, Math.PI/2); ctx.fill();
                         }
                         
-                        // Left side
                         if (b.cutLeft) {
-                            ctx.fillStyle = '#ef4444'; // Red Cut
-                            ctx.fillRect(rx, ry, 4, rhBox);
+                            ctx.fillStyle = '#ef4444'; ctx.fillRect(rx, ry, 4, rhBox);
                         } else {
-                            ctx.fillStyle = '#22c55e';
-                            ctx.beginPath();
-                            ctx.arc(rx + 4, ry + rhBox/2, 4, Math.PI/2, Math.PI*1.5);
-                            ctx.fill();
+                            ctx.fillStyle = '#22c55e'; ctx.beginPath(); ctx.arc(rx + 4, ry + rhBox/2, 4, Math.PI/2, Math.PI*1.5); ctx.fill();
+                        }
+                        
+                        if (b.isCutLengthwise) {
+                            let effMinYLocal = minY + wallOffset;
+                            let effMaxYLocal = maxY - wallOffset;
+                            
+                            let isTopRow = Math.abs(b.y - effMinYLocal) < 1;
+                            let isBottomRow = Math.abs(b.y + b.h - effMaxYLocal) < 1;
+                            
+                            ctx.fillStyle = '#ef4444';
+                            if (isTopRow) ctx.fillRect(rx, ry, rwBox, 4);
+                            if (isBottomRow) ctx.fillRect(rx, ry + rhBox - 4, rwBox, 4);
+                            
+                            let wText = `Ш: ${Math.round(b.keptWidth)}`;
+                            ctx.font = 'bold 10px Inter';
+                            ctx.fillStyle = '#ef4444';
+                            if (rhBox > 25) {
+                                ctx.fillText(wText, rx + rwBox/2, ry + rhBox/2 + 8);
+                            } else {
+                                if (isTopRow) {
+                                    ctx.fillText(wText, rx + rwBox/2, ry + rhBox + 10);
+                                } else if (isBottomRow) {
+                                    ctx.fillText(wText, rx + rwBox/2, ry - 6);
+                                } else {
+                                    ctx.fillText(wText, rx + rwBox/2, ry + rhBox/2);
+                                }
+                            }
+                            ctx.font = 'bold 12px Inter';
                         }
                     }
                 }
