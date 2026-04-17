@@ -23,7 +23,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const startCornerSelect = document.getElementById('startCorner');
     const wallOffsetInput = document.getElementById('wallOffset');
     const manualRowWidthInput = document.getElementById('manualRowWidth');
+    const manualFirstBoardLengthInput = document.getElementById('manualFirstBoardLength');
     const fullRowBtn = document.getElementById('fullRowBtn');
+    const fullBoardBtn = document.getElementById('fullBoardBtn');
     const calcRowWidthDisplay = document.getElementById('calcRowWidthDisplay');
     const rowWidthWarning = document.getElementById('rowWidthWarning');
     const swapRowBtn = document.getElementById('swapRowBtn');
@@ -32,11 +34,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let manualRowMode = 'first';
 
-    const INPUTS = [lamLengthInput, lamWidthInput, minLeftoverInput, minOverlapInput, lamInPackInput, startCornerSelect, wallOffsetInput, manualRowWidthInput];
+    const INPUTS = [lamLengthInput, lamWidthInput, minLeftoverInput, minOverlapInput, lamInPackInput, startCornerSelect, wallOffsetInput, manualRowWidthInput, manualFirstBoardLengthInput];
 
     if (fullRowBtn) {
         fullRowBtn.addEventListener('click', () => {
             manualRowWidthInput.value = lamWidthInput.value;
+            queueDraw(0);
+        });
+    }
+
+    if (fullBoardBtn) {
+        fullBoardBtn.addEventListener('click', () => {
+            manualFirstBoardLengthInput.value = '';
             queueDraw(0);
         });
     }
@@ -61,6 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // State
     let walls = [];
     let boardsMap = [];
+    let pieceStates = {}; // Stores interactive states
     let currentLayout = null; // Cache for drawing
 
     // Canvas Pan & Zoom state
@@ -82,6 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
             corner: startCornerSelect.value,
             wallOffset: wallOffsetInput.value,
             manualRowW: manualRowWidthInput.value,
+            manualFirstBoardLen: manualFirstBoardLengthInput.value,
             manualRowMode: manualRowMode
         };
         localStorage.setItem('laminatorDataV3', JSON.stringify(data));
@@ -104,6 +115,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (finalData.wallOffset !== undefined) wallOffsetInput.value = finalData.wallOffset;
                 if (finalData.manualRowW !== undefined || finalData.firstRowW !== undefined) {
                     manualRowWidthInput.value = finalData.manualRowW || finalData.firstRowW || '';
+                }
+                if (finalData.manualFirstBoardLen !== undefined) {
+                    manualFirstBoardLengthInput.value = finalData.manualFirstBoardLen || '';
                 }
                 if (finalData.manualRowMode) {
                     manualRowMode = finalData.manualRowMode;
@@ -148,6 +162,8 @@ document.addEventListener('DOMContentLoaded', () => {
         isDragging = true;
         startDragX = e.clientX - panX;
         startDragY = e.clientY - panY;
+        canvas.dataset.startX = e.clientX;
+        canvas.dataset.startY = e.clientY;
     });
     canvas.addEventListener('mousemove', (e) => {
         if (isDragging) {
@@ -156,8 +172,75 @@ document.addEventListener('DOMContentLoaded', () => {
             drawCanvas();
         }
     });
-    canvas.addEventListener('mouseup', () => isDragging = false);
+    canvas.addEventListener('mouseup', (e) => {
+        isDragging = false;
+        let dx = Math.abs(e.clientX - Number(canvas.dataset.startX || e.clientX));
+        let dy = Math.abs(e.clientY - Number(canvas.dataset.startY || e.clientY));
+        if (dx < 5 && dy < 5) {
+            handleCanvasClick(e);
+        }
+    });
     canvas.addEventListener('mouseleave', () => isDragging = false);
+
+    function handleCanvasClick(e) {
+        if (!currentLayout || !currentLayout.layoutBoards) return;
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        const { minX, maxX, minY, maxY, layoutBoards } = currentLayout;
+        let rw = maxX - minX; let rh = maxY - minY;
+        if (rw === 0) rw = 1; if (rh === 0) rh = 1;
+        let baseScale = Math.min((canvas.width * 0.45) / rw, (canvas.height * 0.45) / rh);
+        let activeScale = baseScale * scaleZoom;
+        let offX = (canvas.width - rw * activeScale) / 2 - minX * activeScale + panX;
+        let offY = (canvas.height - rh * activeScale) / 2 - minY * activeScale + panY;
+
+        for (let i = layoutBoards.length - 1; i >= 0; i--) {
+            let b = layoutBoards[i];
+            let rx = b.x * activeScale + offX;
+            let ry = b.y * activeScale + offY;
+            let rwBox = b.w * activeScale;
+            let rhBox = b.h * activeScale;
+            
+            if (mouseX >= rx && mouseX <= rx + rwBox && mouseY >= ry && mouseY <= ry + rhBox) {
+                let pId = b.label.split('.')[0];
+                let currentState = pieceStates[b.label] || 'default';
+
+                if (currentState === 'default' || currentState === 'waiting' || currentState === 'in_progress_sibling') {
+                    pieceStates[b.label] = 'in_progress';
+                    layoutBoards.forEach(lb => {
+                        if (lb.label !== b.label && lb.label.split('.')[0] === pId) {
+                            if (!pieceStates[lb.label] || pieceStates[lb.label] === 'default') {
+                                pieceStates[lb.label] = 'in_progress_sibling';
+                            }
+                        }
+                    });
+                    
+                    let targetActiveScale = Math.min((canvas.width * 0.7) / b.w, (canvas.height * 0.7) / b.h);
+                    targetActiveScale = Math.min(targetActiveScale, baseScale * 5); 
+                    scaleZoom = targetActiveScale / baseScale;
+                    activeScale = baseScale * scaleZoom; 
+                    
+                    panX = canvas.width/2 - ((b.x + b.w/2)*activeScale + (canvas.width - rw*activeScale)/2 - minX*activeScale);
+                    panY = canvas.height/2 - ((b.y + b.h/2)*activeScale + (canvas.height - rh*activeScale)/2 - minY*activeScale);
+                    
+                } else if (currentState === 'in_progress') {
+                    pieceStates[b.label] = 'done';
+                    layoutBoards.forEach(lb => {
+                        if (lb.label !== b.label && lb.label.split('.')[0] === pId) {
+                             if (pieceStates[lb.label] === 'in_progress_sibling') pieceStates[lb.label] = 'waiting';
+                        }
+                    });
+                } else if (currentState === 'done') {
+                    pieceStates[b.label] = 'default';
+                }
+                
+                drawCanvas();
+                break;
+            }
+        }
+    }
 
     // -- QUICK BUILD --
     const dirMap = {
@@ -365,6 +448,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function processAndDraw() {
         boardsMap = [];
+        pieceStates = {};
         const pts = generatePolygon();
         const endNode = pts[pts.length - 1];
         const dx = Math.abs(endNode.x);
@@ -467,6 +551,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        let isAbsoluteFirstBoard = true;
+        let manualFirstLen = parseInt(manualFirstBoardLengthInput.value) || 0;
+
         for (let row of yRows) {
             let y = row.y;
             let currentLamW = row.h;
@@ -534,7 +621,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     return { L_first, k, L_last };
                 }
 
-                if (needSpan <= lamL + 0.1) {
+                if (isAbsoluteFirstBoard && manualFirstLen > 0 && manualFirstLen <= lamL) {
+                    let L_last = 0;
+                    let k = 0;
+                    let forceL = manualFirstLen;
+                    if (needSpan <= forceL + 0.1) {
+                        forceL = needSpan;
+                    } else {
+                        let rem = needSpan - forceL;
+                        k = Math.floor(rem / lamL);
+                        L_last = rem - k * lamL;
+                    }
+                    validConfig = { L_first: forceL, k, L_last };
+                    startIsNew = true;
+                } else if (needSpan <= lamL + 0.1) {
                     // Single piece chunk!
                     pool.sort((a, b) => a.len - b.len);
                     for (let i = 0; i < pool.length; i++) {
@@ -584,6 +684,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         L_last: (needSpan - fallbackL) % lamL
                     };
                 }
+
+                isAbsoluteFirstBoard = false;
 
                 // NOW WE LAY IT OUT
                 let pieces = [];
@@ -758,8 +860,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     let rx = tx(b.x), ry = ty(b.y), rwBox = b.w * activeScale, rhBox = b.h * activeScale;
                     ctx.fillRect(rx, ry, rwBox, rhBox);
+
+                    let ps = pieceStates[b.label] || 'default';
+                    let bg = null;
+                    if (ps === 'in_progress') bg = 'rgba(250, 204, 21, 0.75)'; 
+                    else if (ps === 'in_progress_sibling') bg = 'rgba(253, 224, 71, 0.4)'; 
+                    else if (ps === 'done') bg = 'rgba(74, 222, 128, 0.75)'; 
+                    else if (ps === 'waiting') bg = 'rgba(251, 146, 60, 0.75)'; 
+
+                    if (bg) {
+                        ctx.fillStyle = bg;
+                        ctx.fillRect(rx, ry, rwBox, rhBox);
+                    }
+
                     ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-                    ctx.strokeRect(rx, ry, rwBox, rhBox);
+                    if (ps === 'in_progress') {
+                        ctx.strokeStyle = '#ef4444';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(rx, ry, rwBox, rhBox);
+                        ctx.lineWidth = 1;
+                    } else {
+                        ctx.strokeRect(rx, ry, rwBox, rhBox);
+                    }
 
                     let showLocks = showLocksCheck && showLocksCheck.checked;
                     let showText = (rwBox > 25 && rhBox > 15);
@@ -816,6 +938,49 @@ document.addEventListener('DOMContentLoaded', () => {
                             ctx.font = 'bold 12px Inter';
                         }
                     }
+
+                    if (ps === 'in_progress') {
+                        let isCutR = b.cutRight;
+                        let isCutL = b.cutLeft;
+                        let arrowY = ry + rhBox * 0.75; 
+                        
+                        ctx.beginPath();
+                        ctx.strokeStyle = '#1e293b';
+                        ctx.lineWidth = 2;
+                        
+                        let sx = rx + rwBox/2, ex = rx + rwBox/2;
+                        let drawArrow = false;
+
+                        if (isCutR) {
+                            sx = rx + 8; 
+                            ex = rx + rwBox - 8; 
+                            drawArrow = true;
+                        } else if (isCutL) {
+                            sx = rx + rwBox - 8; 
+                            ex = rx + 8; 
+                            drawArrow = true;
+                        }
+
+                        if (drawArrow) {
+                            ctx.moveTo(sx, arrowY);
+                            ctx.lineTo(ex, arrowY);
+                            ctx.stroke();
+                            
+                            let dirMarker = (ex > sx) ? -1 : 1;
+                            ctx.beginPath();
+                            ctx.moveTo(ex, arrowY);
+                            ctx.lineTo(ex + dirMarker * 6, arrowY - 4);
+                            ctx.lineTo(ex + dirMarker * 6, arrowY + 4);
+                            ctx.fillStyle = '#1e293b';
+                            ctx.fill();
+
+                            ctx.font = 'bold 12px Inter';
+                            ctx.fillStyle = '#1e293b';
+                            ctx.textAlign = 'center';
+                            ctx.fillText(Math.round(b.w) + 'мм', rx + rwBox/2, arrowY - 8);
+                        }
+                    }
+
                 }
                 ctx.restore();
             }

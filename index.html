@@ -118,6 +118,20 @@
                         <div id="rowWidthWarning" class="error-msg" style="display:none; font-size:0.8rem; margin-top:8px; padding:6px; text-align:center;">⚠️ Внимание! Ширина одного из рядов меньше 100мм. Рекомендуется увеличить.</div>
                     </div>
 
+                    <div class="form-group row-width-group">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
+                            <label>Длина первой доски</label>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:stretch;">
+                            <div style="flex:1; position:relative;">
+                                <input type="number" id="manualFirstBoardLength" placeholder="Авто (целая)" min="20" step="1" style="height:100%;">
+                                <span class="unit" style="right:12px; top:50%; transform:translateY(-50%); bottom:auto;">мм</span>
+                            </div>
+                            <button id="fullBoardBtn" class="btn-small" style="height:auto; display:flex; align-items:center;" title="Использовать целую доску">Целая</button>
+                        </div>
+                        <small class="hint" style="margin-top:6px; display:block; color:#64748b;">Изменение длины стартовой доски сдвигает рисунок всей укладки и помогает убрать узкие куски у противоположной стены.</small>
+                    </div>
+
                     <div class="form-group">
                         <div class="input-wrapper">
                             <label>Досок в упаковке</label>
