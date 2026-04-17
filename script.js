@@ -540,12 +540,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     let displayLabel = `${pId}.${pIdx}`;
                     
                     let cutLeft = false, cutRight = false;
+                    let isFullFactoryBoard = (useLen >= lamL - 0.1);
+                    
+                    // Visualize cuts physically based on boundaries
+                    // Any board touching a wall that is NOT a full factory board MUST have its cut facing the wall.
                     if (dirX === 1) {
-                        if (p.isStart && !isNewPiece) cutLeft = true; 
-                        if (p.isEnd && useLen < origLen - 0.1) cutRight = true; 
+                        // Laying L to R. Start = Left Wall. End = Right Wall.
+                        if (p.isStart && !isFullFactoryBoard) cutLeft = true; 
+                        if (p.isEnd && !isFullFactoryBoard) cutRight = true;  
                     } else {
-                        if (p.isStart && !isNewPiece) cutRight = true; 
-                        if (p.isEnd && useLen < origLen - 0.1) cutLeft = true; 
+                        // Laying R to L. Start = Right Wall. End = Left Wall.
+                        if (p.isStart && !isFullFactoryBoard) cutRight = true; 
+                        if (p.isEnd && !isFullFactoryBoard) cutLeft = true;    
                     }
 
                     layoutBoards.push({ 
