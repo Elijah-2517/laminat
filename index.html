@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Продвинутый калькулятор ламината</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <h1>Умный калькулятор ламината</h1>
+            <p>Умный алгоритм "Банк обрезков", учет перекрытия швов и карта раскроя</p>
+        </header>
+
+        <div class="main-layout">
+            <!-- Левая колонка: Настройки и конструктор -->
+            <aside class="sidebar">
+                
+                <section class="card">
+                    <h2>Конструктор формы</h2>
+                    <p class="instruction">Добавляйте стены комнаты. Укажите направление стены и её точную длину в <b>миллиметрах</b>.</p>
+                    
+                    <div class="quick-build-box">
+                        <div id="qbIdle">
+                            <span class="qb-icon">⌨️</span> Нажмите стрелку <b>↑ ↓ ← →</b> на клавиатуре
+                        </div>
+                        <div id="qbActive" style="display: none;">
+                            <div class="qb-dir" id="qbDirIcon" data-dir="">↑</div>
+                            <input type="number" id="qbLength" placeholder="Длина (мм)" min="0" step="10">
+                            <div class="qb-hint">Нажмите <b>Enter ↵</b></div>
+                        </div>
+                    </div>
+
+                    <div id="wallsContainer" class="walls-list">
+                        <!-- Сюда добавляются стены через JS -->
+                    </div>
+
+                    <div class="wall-actions">
+                        <button id="addWallBtn" class="btn-outline">+ Добавить стену</button>
+                        <button id="autoCloseBtn" class="btn-primary">Замкнуть контур</button>
+                        <button id="resetRoomBtn" class="btn-danger">Очистить всё</button>
+                    </div>
+                    <div id="roomError" class="error-msg" style="display: none;">Форма комнаты имеет пересечения или не замкнута.</div>
+                </section>
+
+                <section class="card">
+                    <h2>Параметры и правила</h2>
+                    
+                    <div class="form-group">
+                        <label>Размеры доски ламината</label>
+                        <div class="input-row">
+                            <div class="input-wrapper">
+                                <input type="number" id="lamLength" min="0" value="1380" step="1">
+                                <span class="unit">Д: мм</span>
+                            </div>
+                            <div class="input-wrapper">
+                                <input type="number" id="lamWidth" min="0" value="193" step="1">
+                                <span class="unit">Ш: мм</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="input-wrapper">
+                            <label>Точка начала укладки</label>
+                            <select id="startCorner" class="custom-select">
+                                <option value="TL">Слева-Сверху</option>
+                                <option value="TR">Справа-Сверху</option>
+                                <option value="BL">Слева-Снизу</option>
+                                <option value="BR">Справа-Снизу</option>
+                            </select>
+                        </div>
+                        <small class="hint">Выберите "проходную точку", от которой будет строиться идеальная раскладка.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="input-wrapper">
+                            <label>Мин. перекрытие стыков (разбежка)</label>
+                            <input type="number" id="minOverlap" value="400" min="0" step="1">
+                            <span class="unit">мм</span>
+                        </div>
+                        <small class="hint">Каждый стык отдаляется от стыка в соседнем ряду не менее чем на это значение.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="input-wrapper">
+                            <label>Минимальный кусок ламината</label>
+                            <input type="number" id="minLeftover" value="300" min="0" step="1">
+                            <span class="unit">мм</span>
+                        </div>
+                        <small class="hint">Короткие куски отбрасываются в мусор. Слишком короткие концы рядов автоматически предотвращаются алгоритмом.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="input-wrapper">
+                            <label>Досок в упаковке</label>
+                            <input type="number" id="lamInPack" placeholder="0" min="1" value="8" step="1">
+                            <span class="unit">шт</span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="result-section card" id="resultsCard">
+                    <h2>Смета материалов</h2>
+                    <div class="results-content active">
+                        <div class="result-item">
+                            <span class="result-label">Площадь пола</span>
+                            <span class="result-value" id="resRoomArea">0.00 м²</span>
+                        </div>
+                        <div class="result-item">
+                            <span class="result-label">Площадь ламината (покупка)</span>
+                            <span class="result-value" id="resTotalArea">0.00 м²</span>
+                        </div>
+                        
+                        <div class="divider"></div>
+
+                        <div class="result-item highlight">
+                            <span class="result-label">Всего нужно досок</span>
+                            <span class="result-value" id="resTotalBoards">0 шт</span>
+                        </div>
+                        <div class="result-item highlight">
+                            <span class="result-label">Упаковок к покупке</span>
+                            <span class="result-value" id="resPacksCount">0 шт</span>
+                        </div>
+
+                        <div class="result-item sub-result">
+                            <span class="result-label">Останется целых досок</span>
+                            <span class="result-value" id="resLeftoverBoards">0 шт</span>
+                        </div>
+                    </div>
+                </section>
+            </aside>
+
+            <!-- Правая колонка: Визуализация и таблица -->
+            <div class="viewer-column">
+                <section class="editor-section card">
+                    <div class="editor-header">
+                        <h2>Схема укладки</h2>
+                        <div class="canvas-controls" style="text-align:right;">
+                            <label style="cursor:pointer; font-weight:600; color:var(--primary); margin-bottom: 4px; display:inline-block;">
+                                <input type="checkbox" id="showLocks" style="accent-color:var(--primary);"> Показать замки и резы стены
+                            </label>
+                            <br>
+                            <span style="font-size: 0.85rem; color: #64748b;">(Скролл-колесико для масштаба, перетаскивание мышью)</span>
+                        </div>
+                    </div>
+                    
+                    <div class="canvas-wrapper" style="cursor: grab;">
+                        <canvas id="roomCanvas" width="800" height="800"></canvas>
+                    </div>
+                    
+                    <div class="legend" style="margin-top: 1rem;">
+                        <div class="legend-item"><span class="color-box whole"></span>Новая целая доска</div>
+                        <div class="legend-item"><span class="color-box new-cut"></span>Новая (подрезана)</div>
+                        <div class="legend-item"><span class="color-box pool"></span>Обрезок из банка</div>
+                    </div>
+                    <div id="locksLegend" class="legend" style="margin-top: 0.5rem; display: none; padding-top: 0.5rem; border-top: 1px dashed var(--border);">
+                        <div class="legend-item"><span style="color:#22c55e; font-weight:bold; font-size:1.1rem; margin-right:4px;">🟢</span> Заводской замок (шип/паз)</div>
+                        <div class="legend-item"><span style="color:#ef4444; font-weight:bold; font-size:1.1rem; margin-right:4px;">🔴</span> Место спила (глухой край к стене)</div>
+                    </div>
+                </section>
+
+                <section class="card" style="margin-top: 1.5rem;">
+                    <h2>Карта раскроя</h2>
+                    <p class="instruction">Полный список распила каждой физической доски. Алгоритм умно распределяет остатки в новые ряды.</p>
+                    <div class="table-responsive">
+                        <table class="cut-table" id="cutMapTable">
+                            <thead>
+                                <tr>
+                                    <th>№ Доски</th>
+                                    <th>Распил на детали (мм)</th>
+                                    <th>В отход (мусор)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
