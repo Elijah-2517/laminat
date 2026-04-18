@@ -154,3 +154,21 @@ input[type="number"] { -moz-appearance: textfield; }
     color: var(--primary);
     background: rgba(59, 130, 246, 0.05);
 }
+
+/* Install Mode */
+body.install-mode { padding: 0; overflow: hidden; height: 100vh; }
+body.install-mode .app-container { max-width: 100%; height: 100%; margin: 0; }
+body.install-mode .app-header { display: none; }
+body.install-mode .sidebar { display: none; }
+body.install-mode .main-layout { display: block; height: 100%; margin: 0; }
+body.install-mode .viewer-column { height: 100%; }
+body.install-mode .editor-section { height: 75vh; margin-bottom: 0 !important; border-radius: 0; box-shadow: none; display: flex; flex-direction: column; padding: 0.5rem; }
+body.install-mode .editor-header { margin-bottom: 0.5rem; }
+body.install-mode .canvas-wrapper { flex: 1; height: 100%; aspect-ratio: unset; }
+body.install-mode .cut-table-section { height: 25vh; margin-top: 0 !important; border-radius: 0; box-shadow: none; border-top: 2px solid var(--border); display: flex; flex-direction: column; padding: 0; }
+body.install-mode .cut-table-section .table-responsive { flex: 1; overflow-y: auto; padding: 0 1rem; }
+body.install-mode .cut-table-section h2, body.install-mode .cut-table-section p.instruction { display: none; }
+body.install-mode .table-responsive thead { position: sticky; top: 0; background: var(--input-bg); box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+
+.cut-table tr.active-row { background-color: rgba(250, 204, 21, 0.2) !important; }
+.cut-table tr.active-row td:first-child { border-left: 4px solid #eab308; }

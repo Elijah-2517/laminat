@@ -67,6 +67,45 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const toggleInstallModeBtn = document.getElementById('toggleInstallModeBtn');
+    if (toggleInstallModeBtn) {
+        toggleInstallModeBtn.addEventListener('click', () => {
+            let isInstall = document.body.classList.contains('install-mode');
+            if (isInstall) {
+                installZoom = scaleZoom; installPanX = panX; installPanY = panY;
+                document.body.classList.remove('install-mode');
+                scaleZoom = normalZoom; panX = normalPanX; panY = normalPanY;
+            } else {
+                normalZoom = scaleZoom; normalPanX = panX; normalPanY = panY;
+                document.body.classList.add('install-mode');
+                scaleZoom = installZoom; panX = installPanX; panY = installPanY;
+            }
+            toggleInstallModeBtn.textContent = document.body.classList.contains('install-mode') ? 'Выйти из режима' : 'Режим укладки (Во весь экран)';
+            drawCanvas();
+        });
+    }
+
+    const backToCanvasBtn = document.getElementById('backToCanvasBtn');
+    if (backToCanvasBtn) {
+        backToCanvasBtn.addEventListener('click', () => {
+            canvasWrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            backToCanvasBtn.style.display = 'none';
+        });
+    }
+
+    // Canvas Auto Resize when full screen toggles
+    const canvasWrapper = document.querySelector('.canvas-wrapper');
+    if (canvasWrapper) {
+        const ro = new ResizeObserver(entries => {
+            for (let entry of entries) {
+                canvas.width = entry.contentRect.width;
+                canvas.height = entry.contentRect.height;
+                drawCanvas();
+            }
+        });
+        ro.observe(canvasWrapper);
+    }
+
     // State
     let walls = [];
     let boardsMap = [];
@@ -77,6 +116,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let scaleZoom = 1;
     let panX = 0;
     let panY = 0;
+    
+    let installZoom = 1, installPanX = 0, installPanY = 0;
+    let normalZoom = 1, normalPanX = 0, normalPanY = 0;
+    
     let isDragging = false;
     let startDragX, startDragY;
 
@@ -170,7 +213,75 @@ document.addEventListener('DOMContentLoaded', () => {
             panX = e.clientX - startDragX;
             panY = e.clientY - startDragY;
             drawCanvas();
+            return;
         }
+
+        if (!currentLayout || !currentLayout.layoutBoards) {
+            canvas.style.cursor = 'default';
+            return;
+        }
+
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        const { minX, maxX, minY, maxY, layoutBoards } = currentLayout;
+        let rwOrig = maxX - minX; let rhOrig = maxY - minY;
+        let rw = rwOrig;
+        let rh = rhOrig;
+        if (rw === 0) rw = 1; if (rh === 0) rh = 1;
+        
+        let baseScale = Math.min((canvas.width * 0.45) / rw, (canvas.height * 0.45) / rh);
+        let activeScale = baseScale * scaleZoom;
+        let offX = -rwOrig * activeScale / 2 - minX * activeScale;
+        let offY = -rhOrig * activeScale / 2 - minY * activeScale;
+
+        let cx = canvas.width/2 + panX;
+        let cy = canvas.height/2 + panY;
+        let rotX = mouseX - cx;
+        let rotY = mouseY - cy;
+        
+        let isHovering = false;
+        
+        let activePId = null;
+        let activeFullLabel = null;
+        for (let key in pieceStates) {
+            if (pieceStates[key] === 'in_progress') { 
+                activeFullLabel = key;
+                activePId = key.split('.')[0]; 
+                break; 
+            }
+        }
+
+        if (isInstallMode && activePId && mouseX >= canvas.width - 480 && mouseX <= canvas.width - 30 && mouseY >= 30 && mouseY <= 280) {
+             let hudX = canvas.width - 480, hudY = 30, hudW = 450, hudH = 250;
+             if (mouseX >= hudX + hudW - 40 && mouseX <= hudX + hudW - 10 && mouseY >= hudY + 10 && mouseY <= hudY + 40) {
+                 canvas.style.cursor = 'pointer';
+                 return;
+             }
+             if (mouseX >= hudX + 20 && mouseX <= hudX + 110 && mouseY >= hudY + hudH - 50 && mouseY <= hudY + hudH - 14) {
+                 canvas.style.cursor = 'pointer';
+                 return;
+             }
+             if (mouseX >= hudX + hudW - 110 && mouseX <= hudX + hudW - 20 && mouseY >= hudY + hudH - 50 && mouseY <= hudY + hudH - 14) {
+                 canvas.style.cursor = 'pointer';
+                 return;
+             }
+             canvas.style.cursor = 'default';
+             return;
+        }
+        for (let i = layoutBoards.length - 1; i >= 0; i--) {
+            let b = layoutBoards[i];
+            let rx = b.x * activeScale + offX;
+            let ry = b.y * activeScale + offY;
+            let rwBox = b.w * activeScale;
+            let rhBox = b.h * activeScale;
+            if (rotX >= rx && rotX <= rx + rwBox && rotY >= ry && rotY <= ry + rhBox) {
+                isHovering = true;
+                break;
+            }
+        }
+        canvas.style.cursor = isHovering ? 'pointer' : 'default';
     });
     canvas.addEventListener('mouseup', (e) => {
         isDragging = false;
@@ -189,12 +300,60 @@ document.addEventListener('DOMContentLoaded', () => {
         const mouseY = e.clientY - rect.top;
 
         const { minX, maxX, minY, maxY, layoutBoards } = currentLayout;
-        let rw = maxX - minX; let rh = maxY - minY;
+        let rwOrig = maxX - minX; let rhOrig = maxY - minY;
+        let rw = rwOrig;
+        let rh = rhOrig;
         if (rw === 0) rw = 1; if (rh === 0) rh = 1;
+        
         let baseScale = Math.min((canvas.width * 0.45) / rw, (canvas.height * 0.45) / rh);
         let activeScale = baseScale * scaleZoom;
-        let offX = (canvas.width - rw * activeScale) / 2 - minX * activeScale + panX;
-        let offY = (canvas.height - rh * activeScale) / 2 - minY * activeScale + panY;
+        let offX = -rwOrig * activeScale / 2 - minX * activeScale;
+        let offY = -rhOrig * activeScale / 2 - minY * activeScale;
+
+        let cx = canvas.width/2 + panX;
+        let cy = canvas.height/2 + panY;
+        
+        let dxScreen = mouseX - cx;
+        let dyScreen = mouseY - cy;
+        let rotX = dxScreen, rotY = dyScreen;
+
+        let isInstallMode = document.body.classList.contains('install-mode');
+        
+        let activePId = null;
+        let activeFullLabel = null;
+        for (let key in pieceStates) {
+            if (pieceStates[key] === 'in_progress') { 
+                activeFullLabel = key;
+                activePId = key.split('.')[0]; 
+                break; 
+            }
+        }
+
+        if (isInstallMode && activePId && mouseX >= canvas.width - 480 && mouseX <= canvas.width - 30 && mouseY >= 30 && mouseY <= 280) {
+             let hudX = canvas.width - 480, hudY = 30, hudW = 450, hudH = 250;
+             
+             if (mouseX >= hudX + hudW - 40 && mouseX <= hudX + hudW - 10 && mouseY >= hudY + 10 && mouseY <= hudY + 40) {
+                 for (let key in pieceStates) {
+                    if (pieceStates[key] === 'in_progress') pieceStates[key] = 'waiting';
+                    if (pieceStates[key] === 'in_progress_sibling') pieceStates[key] = 'waiting';
+                 }
+                 panX += 225;
+                 drawCanvas();
+                 highlightActiveTableRows();
+                 return;
+             }
+
+             if (mouseX >= hudX + 20 && mouseX <= hudX + 110 && mouseY >= hudY + hudH - 50 && mouseY <= hudY + hudH - 14) {
+                 switchToAdjacentPiece(activeFullLabel, -1);
+                 return;
+             }
+
+             if (mouseX >= hudX + hudW - 110 && mouseX <= hudX + hudW - 20 && mouseY >= hudY + hudH - 50 && mouseY <= hudY + hudH - 14) {
+                 switchToAdjacentPiece(activeFullLabel, 1);
+                 return;
+             }
+             return;
+        }
 
         for (let i = layoutBoards.length - 1; i >= 0; i--) {
             let b = layoutBoards[i];
@@ -203,11 +362,48 @@ document.addEventListener('DOMContentLoaded', () => {
             let rwBox = b.w * activeScale;
             let rhBox = b.h * activeScale;
             
-            if (mouseX >= rx && mouseX <= rx + rwBox && mouseY >= ry && mouseY <= ry + rhBox) {
+            if (rotX >= rx && rotX <= rx + rwBox && rotY >= ry && rotY <= ry + rhBox) {
                 let pId = b.label.split('.')[0];
+                let isInstallMode = document.body.classList.contains('install-mode');
+
+                if (!isInstallMode) {
+                    // Normal mode click
+                    for (let key in pieceStates) {
+                        if (pieceStates[key] === 'normal_selected' || pieceStates[key] === 'normal_selected_sibling') {
+                           pieceStates[key] = 'default';
+                        }
+                    }
+                    
+                    let curState = pieceStates[b.label] || 'default';
+                    
+                    if (curState === 'default') {
+                        pieceStates[b.label] = 'normal_selected';
+                        layoutBoards.forEach(lb => {
+                            if (lb.label !== b.label && lb.label.split('.')[0] === pId) {
+                                if (!pieceStates[lb.label] || pieceStates[lb.label] === 'default') {
+                                    pieceStates[lb.label] = 'normal_selected_sibling';
+                                }
+                            }
+                        });
+                        highlightActiveTableRows(pId);
+                    } else if (curState === 'normal_selected') {
+                        pieceStates[b.label] = 'default';
+                        highlightActiveTableRows();
+                    } else {
+                        // Installation states (in_progress, done, waiting). Do not modify state, just jump to list
+                        highlightActiveTableRows(pId);
+                    }
+
+                    if (document.getElementById('backToCanvasBtn')) {
+                        document.getElementById('backToCanvasBtn').style.display = 'block';
+                    }
+                    drawCanvas();
+                    return;
+                }
+
                 let currentState = pieceStates[b.label] || 'default';
 
-                if (currentState === 'default' || currentState === 'waiting' || currentState === 'in_progress_sibling') {
+                if (currentState === 'default' || currentState === 'waiting' || currentState === 'in_progress_sibling' || currentState === 'normal_selected' || currentState === 'normal_selected_sibling') {
                     pieceStates[b.label] = 'in_progress';
                     layoutBoards.forEach(lb => {
                         if (lb.label !== b.label && lb.label.split('.')[0] === pId) {
@@ -217,13 +413,21 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     });
                     
-                    let targetActiveScale = Math.min((canvas.width * 0.7) / b.w, (canvas.height * 0.7) / b.h);
-                    targetActiveScale = Math.min(targetActiveScale, baseScale * 5); 
-                    scaleZoom = targetActiveScale / baseScale;
-                    activeScale = baseScale * scaleZoom; 
-                    
-                    panX = canvas.width/2 - ((b.x + b.w/2)*activeScale + (canvas.width - rw*activeScale)/2 - minX*activeScale);
-                    panY = canvas.height/2 - ((b.y + b.h/2)*activeScale + (canvas.height - rh*activeScale)/2 - minY*activeScale);
+                    if (document.body.classList.contains('install-mode')) {
+                        let targetActiveScale = Math.min((canvas.width * 0.7) / b.w, (canvas.height * 0.7) / b.h);
+                        targetActiveScale = Math.min(targetActiveScale, baseScale * 25); 
+                        scaleZoom = targetActiveScale / baseScale;
+                        activeScale = baseScale * scaleZoom; 
+                        
+                        let newOffX = -rwOrig * activeScale / 2 - minX * activeScale;
+                        let newOffY = -rhOrig * activeScale / 2 - minY * activeScale;
+                        let pCx = (b.x + b.w/2) * activeScale + newOffX;
+                        let pCy = (b.y + b.h/2) * activeScale + newOffY;
+                        
+                        // Shift center left to fit HUD on the right
+                        panX = -pCx - 225;
+                        panY = -pCy;
+                    }
                     
                 } else if (currentState === 'in_progress') {
                     pieceStates[b.label] = 'done';
@@ -237,7 +441,45 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 
                 drawCanvas();
+                highlightActiveTableRows();
                 break;
+            }
+        }
+    }
+
+    function highlightActiveTableRows(forceActiveId = null) {
+        let activeBoardId = forceActiveId;
+        if (!activeBoardId) {
+            for (let key in pieceStates) {
+                if (pieceStates[key] === 'in_progress' || pieceStates[key] === 'normal_selected') {
+                    activeBoardId = key.split('.')[0];
+                    break;
+                }
+            }
+        }
+        
+        let foundRow = null;
+        document.querySelectorAll('#cutMapTable tbody tr').forEach(tr => {
+            tr.classList.remove('active-row');
+            if (activeBoardId && tr.dataset.boardId === activeBoardId) {
+                tr.classList.add('active-row');
+                foundRow = tr;
+            }
+        });
+
+        if (foundRow) {
+            if (document.body.classList.contains('install-mode')) {
+                let container = foundRow.closest('.table-responsive');
+                if (container) {
+                    let containerRect = container.getBoundingClientRect();
+                    let rowRect = foundRow.getBoundingClientRect();
+                    let scrollTop = container.scrollTop + (rowRect.top - containerRect.top) - (containerRect.height / 2) + (rowRect.height / 2);
+                    container.scrollTo({ top: scrollTop, behavior: 'smooth' });
+                } else {
+                    foundRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            } else {
+                foundRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
         }
     }
@@ -782,7 +1024,7 @@ document.addEventListener('DOMContentLoaded', () => {
             prevRowSeams = currentRowSeams;
         }
 
-        currentLayout = { pts, minX, maxX, minY, maxY, wallOffset, hasError: false, layoutBoards };
+        currentLayout = { pts, minX, maxX, minY, maxY, wallOffset, hasError: false, layoutBoards, dirX, dirY };
         drawCanvas();
 
         updateResults(pts, nextBoardId - 1, lamL, lamW, lamInPack);
@@ -808,6 +1050,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let wasteText = b.waste > 0 ? `${Math.round(b.waste)} мм` : '0';
 
             const tr = document.createElement('tr');
+            tr.dataset.boardId = b.id;
             tr.innerHTML = `
                 <td><b>Доска ${b.id}</b></td>
                 <td>${partsHtml}</td>
@@ -815,6 +1058,57 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
             cutMapTableBody.appendChild(tr);
         });
+    }
+
+    function switchToAdjacentPiece(currentLabel, dir) {
+        if (!currentLayout || !currentLayout.layoutBoards) return;
+        let boards = currentLayout.layoutBoards;
+        let idx = boards.findIndex(b => b.label === currentLabel);
+        if (idx === -1) return;
+        
+        let targetIdx = idx + dir;
+        if (targetIdx >= 0 && targetIdx < boards.length) {
+            let nextBoard = boards[targetIdx];
+            
+            for (let key in pieceStates) {
+                if (pieceStates[key] === 'in_progress') {
+                    pieceStates[key] = dir > 0 ? 'done' : 'waiting';
+                } else if (pieceStates[key] === 'in_progress_sibling') {
+                    pieceStates[key] = 'waiting';
+                }
+            }
+
+            pieceStates[nextBoard.label] = 'in_progress';
+            let newPId = nextBoard.label.split('.')[0];
+            boards.forEach(lb => {
+                if (lb.label !== nextBoard.label && lb.label.split('.')[0] === newPId) {
+                    if (pieceStates[lb.label] !== 'done') {
+                        pieceStates[lb.label] = 'in_progress_sibling';
+                    }
+                }
+            });
+
+            let rwOrig = currentLayout.maxX - currentLayout.minX;
+            let rhOrig = currentLayout.maxY - currentLayout.minY;
+            if (rwOrig === 0) rwOrig = 1; if (rhOrig === 0) rhOrig = 1;
+            let baseScale = Math.min((canvas.width * 0.45) / rwOrig, (canvas.height * 0.45) / rhOrig);
+            
+            let targetActiveScale = Math.min((canvas.width * 0.7) / nextBoard.w, (canvas.height * 0.7) / nextBoard.h);
+            targetActiveScale = Math.min(targetActiveScale, baseScale * 25); 
+            scaleZoom = targetActiveScale / baseScale;
+            let activeScale = baseScale * scaleZoom; 
+            
+            let newOffX = -rwOrig * activeScale / 2 - currentLayout.minX * activeScale;
+            let newOffY = -rhOrig * activeScale / 2 - currentLayout.minY * activeScale;
+            let pCx = (nextBoard.x + nextBoard.w/2) * activeScale + newOffX;
+            let pCy = (nextBoard.y + nextBoard.h/2) * activeScale + newOffY;
+            
+            panX = -pCx - 225;
+            panY = -pCy;
+
+            drawCanvas();
+            highlightActiveTableRows();
+        }
     }
 
     function drawCanvas() {
@@ -884,11 +1178,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     let showLocks = showLocksCheck && showLocksCheck.checked;
-                    let showText = (rwBox > 25 && rhBox > 15);
+                    let isInstallMode = document.body.classList.contains('install-mode');
+                    let showText = (rwBox > 25 && rhBox > 15) && !(ps === 'in_progress' && isInstallMode);
 
                     if (showText) {
                         ctx.fillStyle = (b.type === 'whole') ? '#475569' : ((b.type === 'pool') ? '#fff' : '#1e293b');
-                        if (b.isCutLengthwise && showLocks && rhBox > 25) {
+                        if (b.isCutLengthwise && rhBox > 25) {
                             ctx.fillText(b.label, rx + rwBox / 2, ry + rhBox / 2 - 6);
                         } else {
                             ctx.fillText(b.label, rx + rwBox / 2, ry + rhBox / 2);
@@ -909,76 +1204,98 @@ document.addEventListener('DOMContentLoaded', () => {
                         } else {
                             ctx.fillStyle = '#22c55e'; ctx.beginPath(); ctx.arc(rx + 4, ry + rhBox / 2, 4, Math.PI / 2, Math.PI * 1.5); ctx.fill();
                         }
-
-                        if (b.isCutLengthwise) {
-                            let effMinYLocal = minY + wallOffset;
-                            let effMaxYLocal = maxY - wallOffset;
-
-                            let isTopRow = Math.abs(b.y - effMinYLocal) < 1;
-                            let isBottomRow = Math.abs(b.y + b.h - effMaxYLocal) < 1;
-
-                            ctx.fillStyle = '#ef4444';
-                            if (isTopRow) ctx.fillRect(rx, ry, rwBox, 4);
-                            if (isBottomRow) ctx.fillRect(rx, ry + rhBox - 4, rwBox, 4);
-
-                            let wText = `Ш: ${Math.round(b.keptWidth)}`;
-                            ctx.font = 'bold 10px Inter';
-                            ctx.fillStyle = '#ef4444';
-                            if (rhBox > 25) {
-                                ctx.fillText(wText, rx + rwBox / 2, ry + rhBox / 2 + 8);
-                            } else {
-                                if (isTopRow) {
-                                    ctx.fillText(wText, rx + rwBox / 2, ry + rhBox + 10);
-                                } else if (isBottomRow) {
-                                    ctx.fillText(wText, rx + rwBox / 2, ry - 6);
-                                } else {
-                                    ctx.fillText(wText, rx + rwBox / 2, ry + rhBox / 2);
-                                }
-                            }
-                            ctx.font = 'bold 12px Inter';
-                        }
                     }
 
-                    if (ps === 'in_progress') {
+                    if (b.isCutLengthwise) {
+                        let effMinYLocal = minY + wallOffset;
+                        let effMaxYLocal = maxY - wallOffset;
+
+                        let isTopRow = Math.abs(b.y - effMinYLocal) < 1;
+                        let isBottomRow = Math.abs(b.y + b.h - effMaxYLocal) < 1;
+
+                        ctx.fillStyle = '#ef4444';
+                        if (isTopRow) ctx.fillRect(rx, ry, rwBox, 4);
+                        if (isBottomRow) ctx.fillRect(rx, ry + rhBox - 4, rwBox, 4);
+
+                        let wText = `Ш: ${Math.round(b.keptWidth)}`;
+                        ctx.font = 'bold 10px Inter';
+                        ctx.fillStyle = '#ef4444';
+                        if (rhBox > 25) {
+                            ctx.fillText(wText, rx + rwBox / 2, ry + rhBox / 2 + 8);
+                        } else {
+                            if (isTopRow) {
+                                ctx.fillText(wText, rx + rwBox / 2, ry + rhBox + 10);
+                            } else if (isBottomRow) {
+                                ctx.fillText(wText, rx + rwBox / 2, ry - 6);
+                            } else {
+                                ctx.fillText(wText, rx + rwBox / 2, ry + rhBox / 2);
+                            }
+                        }
+                        ctx.font = 'bold 12px Inter';
+                    }
+
+                    if (ps === 'in_progress' && isInstallMode) {
                         let isCutR = b.cutRight;
                         let isCutL = b.cutLeft;
-                        let arrowY = ry + rhBox * 0.75; 
+                        let midX = rx + rwBox/2;
+                        let midY = ry + rhBox/2;
                         
+                        let nameText = `Доска ${b.label}`;
+                        ctx.font = 'bold 15px Inter';
+                        let twName = ctx.measureText(nameText).width;
+                        let badgeW = twName + 24;
+                        let badgeH = 28;
+                        let badgeY = midY - 18; 
+                        
+                        ctx.fillStyle = '#1e293b'; 
                         ctx.beginPath();
-                        ctx.strokeStyle = '#1e293b';
-                        ctx.lineWidth = 2;
+                        ctx.roundRect(midX - badgeW/2, badgeY - badgeH/2, badgeW, badgeH, 14);
+                        ctx.fill();
                         
-                        let sx = rx + rwBox/2, ex = rx + rwBox/2;
-                        let drawArrow = false;
-
-                        if (isCutR) {
-                            sx = rx + 8; 
-                            ex = rx + rwBox - 8; 
-                            drawArrow = true;
-                        } else if (isCutL) {
-                            sx = rx + rwBox - 8; 
-                            ex = rx + 8; 
-                            drawArrow = true;
-                        }
-
-                        if (drawArrow) {
+                        ctx.fillStyle = '#f8fafc';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(nameText, midX, badgeY);
+                        
+                        let arrowY = midY + 18;
+                        let dimText = `${Math.round(b.w)} мм`;
+                        ctx.font = 'bold 16px Inter';
+                        let twDim = ctx.measureText(dimText).width;
+                        let pillW = twDim + 24;
+                        
+                        let sx = rx + 8, ex = rx + rwBox - 8;
+                        if (rwBox > pillW + 30) {
+                            ctx.beginPath();
+                            ctx.strokeStyle = '#ef4444';
+                            ctx.lineWidth = 2;
                             ctx.moveTo(sx, arrowY);
+                            ctx.lineTo(midX - pillW/2, arrowY);
+                            ctx.moveTo(midX + pillW/2, arrowY);
                             ctx.lineTo(ex, arrowY);
                             ctx.stroke();
-                            
-                            let dirMarker = (ex > sx) ? -1 : 1;
+
+                            ctx.fillStyle = '#ef4444';
+                            // Left arrow
+                            ctx.beginPath();
+                            ctx.moveTo(sx, arrowY);
+                            ctx.lineTo(sx + 10, arrowY - 4);
+                            ctx.lineTo(sx + 10, arrowY + 4);
+                            ctx.fill();
+                            // Right arrow
                             ctx.beginPath();
                             ctx.moveTo(ex, arrowY);
-                            ctx.lineTo(ex + dirMarker * 6, arrowY - 4);
-                            ctx.lineTo(ex + dirMarker * 6, arrowY + 4);
-                            ctx.fillStyle = '#1e293b';
+                            ctx.lineTo(ex - 10, arrowY - 4);
+                            ctx.lineTo(ex - 10, arrowY + 4);
                             ctx.fill();
-
-                            ctx.font = 'bold 12px Inter';
-                            ctx.fillStyle = '#1e293b';
-                            ctx.textAlign = 'center';
-                            ctx.fillText(Math.round(b.w) + 'мм', rx + rwBox/2, arrowY - 8);
                         }
+                        
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+                        ctx.beginPath();
+                        ctx.roundRect(midX - pillW/2, arrowY - 14, pillW, 28, 6);
+                        ctx.fill();
+                        
+                        ctx.fillStyle = '#ef4444'; 
+                        ctx.fillText(dimText, midX, arrowY);
                     }
 
                 }
@@ -990,7 +1307,17 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.lineWidth = 3;
         ctx.stroke();
 
-        if (hasError) return;
+        if (hasError) {
+            ctx.restore();
+            return;
+        }
+
+        // Hide dimensions in full screen install mode for immersion
+        if (document.body.classList.contains('install-mode')) {
+            ctx.restore();
+            drawHUD(ctx);
+            return;
+        }
 
         // Calc CW area to fix dimension line normals outwards
         let areaSrc = 0;
@@ -1089,6 +1416,252 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.textBaseline = 'middle';
             ctx.fillText(text, cxDim, cyDim);
         }
+        ctx.restore();
+        drawHUD(ctx);
+    }
+
+    function drawHUD(ctx) {
+        if (!document.body.classList.contains('install-mode')) return;
+
+        let activePId = null;
+        for (let key in pieceStates) {
+            if (pieceStates[key] === 'in_progress') { activePId = key.split('.')[0]; break; }
+        }
+
+        if (!activePId || !currentLayout) return;
+
+        let parts = [];
+        for (let b of currentLayout.layoutBoards) {
+            if (b.label.split('.')[0] === activePId) parts.push(b);
+        }
+        parts.sort((a, b) => parseInt(a.label.split('.')[1]) - parseInt(b.label.split('.')[1]));
+
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // Guarantee UI stays fixed
+        let hudW = 450;
+        let hudH = 250;
+        let hudX = canvas.width - hudW - 30;
+        let hudY = 30;
+
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
+        ctx.shadowBlur = 20;
+        ctx.shadowOffsetY = 10;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.roundRect(hudX, hudY, hudW, hudH, 16);
+        ctx.fill();
+        ctx.shadowColor = 'transparent';
+
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // DRAW CLOSE X
+        ctx.fillStyle = '#f1f5f9';
+        ctx.beginPath();
+        ctx.arc(hudX + hudW - 25, hudY + 25, 15, 0, Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = 'bold 16px Inter';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('✖', hudX + hudW - 25, hudY + 26);
+
+        ctx.fillStyle = '#1e293b';
+        ctx.font = 'bold 16px Inter';
+        ctx.textAlign = 'center';
+        ctx.fillText(`Распил: Физическая доска ${activePId}`, hudX + hudW/2, hudY + 30);
+
+        let lamL = Number(lamLengthInput.value) || 1380;
+        let boardScreenW = 350, boardScreenH = 60;
+        let boardScreenX = hudX + (hudW - boardScreenW)/2, boardScreenY = hudY + 90;
+
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(boardScreenX, boardScreenY, boardScreenW, boardScreenH);
+        ctx.strokeStyle = '#94a3b8';
+        ctx.strokeRect(boardScreenX, boardScreenY, boardScreenW, boardScreenH);
+
+        ctx.fillStyle = '#64748b';
+        ctx.font = '10px Inter';
+        ctx.fillText('папа', boardScreenX - 15, boardScreenY + boardScreenH/2);
+        ctx.fillText('мама', boardScreenX + boardScreenW + 15, boardScreenY + boardScreenH/2);
+        ctx.fillText('папа', boardScreenX + boardScreenW/2, boardScreenY - 10);
+        ctx.fillText('мама', boardScreenX + boardScreenW/2, boardScreenY + boardScreenH + 15);
+
+        let currentPixX = boardScreenX;
+        let currentMathX = 0;
+
+        let leftPiece = null;
+        let rightPiece = null;
+
+        if (parts.length > 0) leftPiece = parts[0];
+        if (parts.length > 1) rightPiece = parts[1];
+
+        // Draw left piece
+        if (leftPiece) {
+            let pwPix = (leftPiece.w / lamL) * boardScreenW;
+            let ps = pieceStates[leftPiece.label];
+            let fill = '#e2e8f0'; 
+            if (ps === 'in_progress') fill = '#fde047';
+            else if (ps === 'done') fill = '#86efac';
+            else if (ps === 'waiting' || ps === 'in_progress_sibling') fill = '#fdba74';
+            
+            ctx.fillStyle = fill;
+            ctx.fillRect(currentPixX, boardScreenY, pwPix, boardScreenH);
+            
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(currentPixX, boardScreenY, pwPix, boardScreenH);
+
+            ctx.fillStyle = '#1e293b';
+            ctx.textAlign = 'center';
+            if (pwPix > 40) {
+                ctx.font = 'bold 13px Inter';
+                ctx.fillText(`${leftPiece.label}`, currentPixX + pwPix/2, boardScreenY + boardScreenH/2);
+            } else {
+                ctx.font = 'bold 10px Inter';
+                ctx.fillText(`${leftPiece.label}`, currentPixX + pwPix/2, boardScreenY + boardScreenH/2);
+            }
+
+            let dimY = boardScreenY + boardScreenH + 35;
+            ctx.beginPath();
+            ctx.moveTo(currentPixX, dimY - 5); ctx.lineTo(currentPixX, dimY + 5);
+            ctx.moveTo(currentPixX + pwPix, dimY - 5); ctx.lineTo(currentPixX + pwPix, dimY + 5);
+            ctx.moveTo(currentPixX, dimY); ctx.lineTo(currentPixX + pwPix, dimY);
+            ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1; ctx.stroke();
+            
+            ctx.font = 'bold 12px Inter';
+            ctx.fillStyle = (ps === 'in_progress') ? '#ef4444' : '#1e293b';
+            ctx.fillText(`${Math.round(leftPiece.w)} мм`, currentPixX + pwPix/2, dimY - 8);
+
+            if (leftPiece.isCutLengthwise) {
+                let effMinYLocal = currentLayout.minY + currentLayout.wallOffset;
+                let effMaxYLocal = currentLayout.maxY - currentLayout.wallOffset;
+                
+                let isTopOnCanvas = Math.abs(leftPiece.y - effMinYLocal) < 1;
+                // isFirstRow logic: if building downwards (dirY=1), first row is top. If upwards (dirY=-1), first row is at max Y (bottom).
+                let isFirstRow = (currentLayout.dirY === 1) ? isTopOnCanvas : !isTopOnCanvas;
+                
+                // First row always cuts "папа" (top of widget). Last row always cuts "мама" (bottom of widget).
+                let cutTopWidget = isFirstRow;
+                
+                ctx.fillStyle = '#ef4444';
+                if (cutTopWidget) ctx.fillRect(currentPixX, boardScreenY, pwPix, 4);
+                else ctx.fillRect(currentPixX, boardScreenY + boardScreenH - 4, pwPix, 4);
+                
+                ctx.font = 'bold 10px Inter';
+                let wText = `Ш: ${Math.round(leftPiece.keptWidth)}`;
+                ctx.fillText(wText, currentPixX + pwPix/2, cutTopWidget ? boardScreenY + 16 : boardScreenY + boardScreenH - 10);
+            }
+
+            currentPixX += pwPix;
+            currentMathX += leftPiece.w;
+        }
+
+        // Output waste in the middle if there are 2 pieces
+        if (leftPiece && rightPiece) {
+            let wasteMath = lamL - leftPiece.w - rightPiece.w;
+            if (wasteMath > 0.5) {
+                let wasteWPix = (wasteMath / lamL) * boardScreenW;
+                ctx.fillStyle = '#fca5a5'; 
+                ctx.fillRect(currentPixX, boardScreenY, wasteWPix, boardScreenH);
+                ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1;
+                ctx.strokeRect(currentPixX, boardScreenY, wasteWPix, boardScreenH);
+            
+                ctx.fillStyle = '#1e293b'; ctx.font = '12px Inter';
+                if (wasteWPix > 40) ctx.fillText('Мусор', currentPixX + wasteWPix/2, boardScreenY + boardScreenH/2);
+                
+                currentPixX += wasteWPix;
+                currentMathX += wasteMath;
+            }
+        }
+
+        // Draw right piece
+        if (rightPiece) {
+            let pwPix = (rightPiece.w / lamL) * boardScreenW;
+            let ps = pieceStates[rightPiece.label];
+            let fill = '#e2e8f0'; 
+            if (ps === 'in_progress') fill = '#fde047';
+            else if (ps === 'done') fill = '#86efac';
+            else if (ps === 'waiting' || ps === 'in_progress_sibling') fill = '#fdba74';
+            
+            ctx.fillStyle = fill;
+            ctx.fillRect(currentPixX, boardScreenY, pwPix, boardScreenH);
+            
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(currentPixX, boardScreenY, pwPix, boardScreenH);
+
+            ctx.fillStyle = '#1e293b';
+            ctx.textAlign = 'center';
+            if (pwPix > 40) {
+                ctx.font = 'bold 13px Inter';
+                ctx.fillText(`${rightPiece.label}`, currentPixX + pwPix/2, boardScreenY + boardScreenH/2);
+            } else {
+                ctx.font = 'bold 10px Inter';
+                ctx.fillText(`${rightPiece.label}`, currentPixX + pwPix/2, boardScreenY + boardScreenH/2);
+            }
+
+            let dimY = boardScreenY + boardScreenH + 35;
+            ctx.beginPath();
+            ctx.moveTo(currentPixX, dimY - 5); ctx.lineTo(currentPixX, dimY + 5);
+            ctx.moveTo(currentPixX + pwPix, dimY - 5); ctx.lineTo(currentPixX + pwPix, dimY + 5);
+            ctx.moveTo(currentPixX, dimY); ctx.lineTo(currentPixX + pwPix, dimY);
+            ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1; ctx.stroke();
+            
+            ctx.font = 'bold 12px Inter';
+            ctx.fillStyle = (ps === 'in_progress') ? '#ef4444' : '#1e293b';
+            ctx.fillText(`${Math.round(rightPiece.w)} мм`, currentPixX + pwPix/2, dimY - 8);
+
+            if (rightPiece.isCutLengthwise) {
+                let effMinYLocal = currentLayout.minY + currentLayout.wallOffset;
+                let effMaxYLocal = currentLayout.maxY - currentLayout.wallOffset;
+                
+                let isTopOnCanvas = Math.abs(rightPiece.y - effMinYLocal) < 1;
+                let isFirstRow = (currentLayout.dirY === 1) ? isTopOnCanvas : !isTopOnCanvas;
+                let cutTopWidget = isFirstRow;
+
+                ctx.fillStyle = '#ef4444';
+                if (cutTopWidget) ctx.fillRect(currentPixX, boardScreenY, pwPix, 4);
+                else ctx.fillRect(currentPixX, boardScreenY + boardScreenH - 4, pwPix, 4);
+                
+                ctx.font = 'bold 10px Inter';
+                let wText = `Ш: ${Math.round(rightPiece.keptWidth)}`;
+                ctx.fillText(wText, currentPixX + pwPix/2, cutTopWidget ? boardScreenY + 16 : boardScreenY + boardScreenH - 10);
+            }
+
+            currentPixX += pwPix;
+            currentMathX += rightPiece.w;
+        }
+
+        // If only 1 piece, draw waste on the right
+        if (leftPiece && !rightPiece && currentMathX < lamL - 1) { 
+            let wasteWPix = ((lamL - currentMathX) / lamL) * boardScreenW;
+            ctx.fillStyle = '#fca5a5'; 
+            ctx.fillRect(currentPixX, boardScreenY, wasteWPix, boardScreenH);
+            ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1;
+            ctx.strokeRect(currentPixX, boardScreenY, wasteWPix, boardScreenH);
+            
+            ctx.fillStyle = '#1e293b'; ctx.font = '12px Inter';
+            if (wasteWPix > 40) ctx.fillText('Мусор', currentPixX + wasteWPix/2, boardScreenY + boardScreenH/2);
+        }
+
+        ctx.fillStyle = '#e2e8f0';
+        ctx.beginPath();
+        ctx.roundRect(hudX + 20, hudY + hudH - 50, 90, 36, 8);
+        ctx.fill();
+        ctx.fillStyle = '#1e293b';
+        ctx.font = 'bold 14px Inter';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('← Назад', hudX + 20 + 45, hudY + hudH - 50 + 18);
+
+        ctx.fillStyle = '#3b82f6';
+        ctx.beginPath();
+        ctx.roundRect(hudX + hudW - 110, hudY + hudH - 50, 90, 36, 8);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText('Далее →', hudX + hudW - 110 + 45, hudY + hudH - 50 + 18);
+
     }
 
     function updateResults(pts, totalBoards, lamL, lamW, lamInPack) {

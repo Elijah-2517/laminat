@@ -178,6 +178,7 @@
                     <div class="editor-header">
                         <h2>Схема укладки</h2>
                         <div class="canvas-controls" style="text-align:right;">
+                            <button type="button" id="toggleInstallModeBtn" class="btn-primary" style="margin-right: 15px; padding: 0.4rem 1rem; font-size:0.9rem;">Режим укладки (Во весь экран)</button>
                             <label style="cursor:pointer; font-weight:600; color:var(--primary); margin-bottom: 4px; display:inline-block;">
                                 <input type="checkbox" id="showLocks" style="accent-color:var(--primary);"> Показать замки и резы стены
                             </label>
@@ -186,9 +187,10 @@
                         </div>
                     </div>
                     
-                    <div class="canvas-wrapper" style="cursor: grab;">
+                    <div class="canvas-wrapper">
                         <canvas id="roomCanvas" width="800" height="800"></canvas>
                     </div>
+                    <button type="button" id="backToCanvasBtn" class="btn-primary" style="display:none; position:fixed; bottom:20px; right:20px; z-index:100; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 0.5rem 1.5rem;">Вернуться к чертежу ⬆</button>
                     
                     <div class="legend" style="margin-top: 1rem;">
                         <div class="legend-item"><span class="color-box whole"></span>Новая целая доска</div>
@@ -201,7 +203,7 @@
                     </div>
                 </section>
 
-                <section class="card" style="margin-top: 1.5rem;">
+                <section id="cutMapSection" class="card cut-table-section" style="margin-top: 1.5rem;">
                     <h2>Карта раскроя</h2>
                     <p class="instruction">Полный список распила каждой физической доски. Алгоритм умно распределяет остатки в новые ряды.</p>
                     <div class="table-responsive">
