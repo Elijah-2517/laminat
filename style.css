@@ -132,9 +132,10 @@ input[type="number"] { -moz-appearance: textfield; }
 .cut-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .cut-table th, .cut-table td { padding: 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
 .cut-table th { background: var(--input-bg); font-weight: 600; color: var(--text-main); }
-.piece-badge { display: inline-block; background: #e6ccb2; padding: 0.2rem 0.5rem; border-radius: 4px; margin: 0.2rem; font-weight: 500; font-size: 0.85rem; border: 1px solid rgba(0,0,0,0.1); }
+.piece-badge { display: inline-block; background: #e6ccb2; padding: 0.2rem 0.5rem; border-radius: 4px; margin: 0.2rem; font-weight: 500; font-size: 0.85rem; border: 1px solid rgba(0,0,0,0.1); transition: transform 0.2s ease, box-shadow 0.2s ease; }
 .piece-badge.from-pool { background: #cd9f7b; color: #fff;}
 .piece-badge.whole { background: #fdfaf6; }
+.piece-badge.active-badge { box-shadow: 0 0 0 2px var(--danger); border-color: var(--danger); transform: scale(1.05); position: relative; z-index: 10; font-weight: 700; color: var(--danger); }
 .waste-badge { color: var(--danger); font-weight: 600; }
 
 .btn-small {

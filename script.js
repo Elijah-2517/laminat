@@ -404,6 +404,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 let currentState = pieceStates[b.label] || 'default';
 
                 if (currentState === 'default' || currentState === 'waiting' || currentState === 'in_progress_sibling' || currentState === 'normal_selected' || currentState === 'normal_selected_sibling') {
+                    
+                    for (let key in pieceStates) {
+                        if (pieceStates[key] === 'in_progress' || pieceStates[key] === 'in_progress_sibling') {
+                            pieceStates[key] = 'default';
+                        }
+                    }
+
                     pieceStates[b.label] = 'in_progress';
                     layoutBoards.forEach(lb => {
                         if (lb.label !== b.label && lb.label.split('.')[0] === pId) {
@@ -449,10 +456,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function highlightActiveTableRows(forceActiveId = null) {
         let activeBoardId = forceActiveId;
+        let activeFullLabel = null;
+
         if (!activeBoardId) {
             for (let key in pieceStates) {
                 if (pieceStates[key] === 'in_progress' || pieceStates[key] === 'normal_selected') {
                     activeBoardId = key.split('.')[0];
+                    activeFullLabel = key;
+                    break;
+                }
+            }
+        } else {
+            for (let key in pieceStates) {
+                if ((pieceStates[key] === 'in_progress' || pieceStates[key] === 'normal_selected') && key.split('.')[0] === activeBoardId) {
+                    activeFullLabel = key;
                     break;
                 }
             }
@@ -464,6 +481,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (activeBoardId && tr.dataset.boardId === activeBoardId) {
                 tr.classList.add('active-row');
                 foundRow = tr;
+            }
+        });
+
+        document.querySelectorAll('#cutMapTable tbody .piece-badge').forEach(badge => {
+            badge.classList.remove('active-badge');
+            if (activeFullLabel && badge.dataset.label === activeFullLabel) {
+                 badge.classList.add('active-badge');
             }
         });
 
@@ -1043,7 +1067,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     let cutAway = p.origW - Math.round(p.keptWidth);
                     extra = `<br><small style="color:var(--danger); display:block; margin-top:3px; line-height:1.2; border-top: 1px solid rgba(0,0,0,0.1); padding-top:2px;">✂️ Пилом вдоль:<br>отрезать в мусор: <b>${cutAway} мм</b><br>укладываем ширину: <b>${Math.round(p.keptWidth)} мм</b></small>`;
                 }
-                return `<span class="piece-badge ${badgeClass}" style="vertical-align:top;">${p.label}: ${Math.round(p.len)}мм${extra}</span>`
+                return `<span class="piece-badge ${badgeClass}" data-label="${p.label}" style="vertical-align:top;">${p.label}: ${Math.round(p.len)}мм${extra}</span>`
             }).join('');
 
             let wasteClass = b.waste > 0 ? 'waste-badge' : '';
@@ -1675,8 +1699,18 @@ document.addEventListener('DOMContentLoaded', () => {
         let packsNeeded = Math.ceil(totalBoards / lamInPack);
         let purchasedBoards = packsNeeded * lamInPack;
 
+        let purchasedArea = purchasedBoards * lamL * lamW / 1000000;
+        let wastePct = 0;
+        if (areaM2 > 0) {
+            wastePct = ((purchasedArea - areaM2) / areaM2) * 100;
+        }
+
         resRoomArea.textContent = areaM2.toFixed(3) + ' м²';
-        resTotalArea.textContent = (purchasedBoards * lamL * lamW / 1000000).toFixed(3) + ' м²';
+        resTotalArea.textContent = purchasedArea.toFixed(3) + ' м²';
+        if (document.getElementById('resWastePct')) {
+            document.getElementById('resWastePct').textContent = wastePct.toFixed(1) + ' %';
+        }
+        
         resTotalBoards.textContent = totalBoards + ' шт';
         resPacksCount.textContent = packsNeeded + ' шт';
         resLeftoverBoards.textContent = (purchasedBoards - totalBoards) + ' шт';
